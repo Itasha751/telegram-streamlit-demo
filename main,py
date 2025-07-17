@@ -1,0 +1,57 @@
+import asyncio
+from telethon.sync import TelegramClient
+from telethon.tl.functions.messages import GetHistoryRequest
+import datetime
+import json
+import os
+
+api_id = int(os.getenv("TG_API_ID"))
+api_hash = os.getenv("TG_API_HASH")
+channel_url = os.getenv("TG_CHANNEL_URL", "https://t.me/RTarabic")
+
+client = TelegramClient('session', api_id, api_hash)
+
+async def fetch_posts():
+    await client.start()
+    channel = await client.get_entity(channel_url)
+    today = datetime.datetime.combine(datetime.date.today(), datetime.time.min).astimezone()
+    offset_id = 0
+    messages = []
+
+    while True:
+        history = await client(GetHistoryRequest(
+            peer=channel,
+            limit=100,
+            offset_id=offset_id,
+            offset_date=None,
+            max_id=0,
+            min_id=0,
+            add_offset=0,
+            hash=0
+        ))
+        batch = history.messages
+        if not batch:
+            break
+        for msg in batch:
+            if msg.date.astimezone() < today:
+                break
+            if msg.message:
+                messages.append({
+                    "text": msg.message,
+                    "timestamp": msg.date.astimezone().strftime('%Y-%m-%d %H:%M'),
+                    "media_type": "none"
+                })
+        offset_id = batch[-1].id
+
+    with open("data.json", "w", encoding="utf-8") as f:
+        json.dump(messages, f, ensure_ascii=False, indent=2)
+
+    await client.disconnect()
+
+async def loop_fetch():
+    while True:
+        print("🔁 Fetching posts...")
+        await fetch_posts()
+        await asyncio.sleep(60)
+
+asyncio.run(loop_fetch())
